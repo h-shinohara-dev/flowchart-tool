@@ -927,6 +927,117 @@
             justify-content: flex-end;
         }
 
+        /* オンボーディングツアー */
+        .tour-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 1100;
+            display: none;
+        }
+        .tour-overlay.active { display: block; }
+
+        .tour-spotlight {
+            position: absolute;
+            border-radius: 8px;
+            background: transparent;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.55), 0 0 20px 4px rgba(74,144,217,0.5);
+            pointer-events: none;
+            transition: top 0.35s ease, left 0.35s ease, width 0.35s ease, height 0.35s ease;
+            animation: tourPulse 2s ease-in-out infinite;
+        }
+        @keyframes tourPulse {
+            0%, 100% { box-shadow: 0 0 0 9999px rgba(0,0,0,0.55), 0 0 20px 4px rgba(74,144,217,0.4); }
+            50%      { box-shadow: 0 0 0 9999px rgba(0,0,0,0.55), 0 0 30px 8px rgba(74,144,217,0.8); }
+        }
+
+        .tour-tooltip {
+            position: absolute;
+            background: #fff;
+            border-radius: 10px;
+            min-width: 300px;
+            max-width: 400px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+            pointer-events: all;
+            opacity: 0;
+            transform: translateY(12px);
+            transition: opacity 0.3s ease, transform 0.3s ease, top 0.35s ease, left 0.35s ease;
+        }
+        .tour-tooltip.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .tour-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+        .tour-step-counter {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+        .tour-skip-btn {
+            padding: 4px 14px;
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text-secondary);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+        .tour-skip-btn:hover { background: #f0f0f0; }
+
+        .tour-content {
+            padding: 20px;
+        }
+        .tour-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0 0 10px 0;
+        }
+        .tour-description {
+            font-size: 13.5px;
+            color: #444;
+            line-height: 1.7;
+            margin: 0;
+        }
+
+        .tour-footer {
+            display: flex;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-top: 1px solid var(--border);
+            gap: 12px;
+        }
+        .tour-nav-btn {
+            padding: 8px 0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.15s;
+            flex: 1;
+            text-align: center;
+        }
+        .tour-back-btn {
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text-primary);
+        }
+        .tour-back-btn:hover:not(:disabled) { background: #f5f5f5; }
+        .tour-back-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+        .tour-next-btn {
+            background: var(--accent);
+            color: #fff;
+            border: 1px solid var(--accent);
+        }
+        .tour-next-btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
         /* ドロップダウン */
         .dropdown {
             position: relative;
@@ -3056,6 +3167,11 @@
                         <td style="padding:3px 8px;">PNG / SVG形式で出力。範囲指定出力も可能</td>
                     </tr>
                 </table>
+
+                <div style="margin-top:20px;padding-top:16px;border-top:1px solid #e0e0e0;">
+                    <button class="action-btn primary" id="restartTourBtn"
+                        style="width:100%;font-size:13px;padding:8px 0;">チュートリアルを再度表示</button>
+                </div>
             </div>
         </div>
     </div>
@@ -9830,6 +9946,10 @@
         document.getElementById('helpModal').onclick = (e) => {
             if (e.target === e.currentTarget) e.currentTarget.classList.remove('active');
         };
+        document.getElementById('restartTourBtn').onclick = () => {
+            document.getElementById('helpModal').classList.remove('active');
+            if (window.startOnboardingTour) window.startOnboardingTour();
+        };
 
         document.getElementById('loadBtn').onclick = () => document.getElementById('fileInput').click();
 
@@ -11447,6 +11567,217 @@
                 document.body.style.userSelect = '';
             }
         });
+    </script>
+
+    <!-- オンボーディングツアー -->
+    <div id="tourOverlay" class="tour-overlay">
+        <div id="tourSpotlight" class="tour-spotlight"></div>
+        <div id="tourTooltip" class="tour-tooltip">
+            <div class="tour-header">
+                <div class="tour-step-counter"><span id="tourCurrentStep">1</span> / <span id="tourTotalSteps">7</span></div>
+                <button id="tourSkipBtn" class="tour-skip-btn">スキップ</button>
+            </div>
+            <div class="tour-content">
+                <h3 id="tourTitle" class="tour-title"></h3>
+                <p id="tourDescription" class="tour-description"></p>
+            </div>
+            <div class="tour-footer">
+                <button id="tourBackBtn" class="tour-nav-btn tour-back-btn">戻る</button>
+                <button id="tourNextBtn" class="tour-nav-btn tour-next-btn">次へ</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ========================================
+    // オンボーディングツアー
+    // ========================================
+    (function() {
+        const TOUR_STORAGE_KEY = 'flowchart-tour-completed';
+
+        const tourSteps = [
+            {
+                target: '#shapeTools',
+                title: 'シェイプを配置',
+                description: 'ツールバーからシェイプ（開始・タスク・判断など）を選んで、キャンバスをクリックするとノードが配置されます。ドラッグでサイズを指定することもできます。',
+                position: 'bottom'
+            },
+            {
+                target: '#arrowTool',
+                title: '矢印で接続',
+                description: 'ノードにカーソルを合わせると青い接続ポイント●が表示されます。これをドラッグして別のノードへ接続しましょう。\n矢印ツールを使えばフリー矢印も描画できます。',
+                position: 'bottom'
+            },
+            {
+                target: '#textTool',
+                title: 'テキストを配置',
+                description: 'テキストツールを選んでキャンバスをクリックすると、自由な位置にテキストを配置できます。ラベルや注釈の追加に便利です。',
+                position: 'bottom'
+            },
+            {
+                target: '.swimlane-sidebar',
+                title: 'スイムレーン管理',
+                description: '左サイドバーでレーンの追加・並べ替え・削除ができます。レーン名をダブルクリックで編集、Shift+Enterで改行もできます。',
+                position: 'right'
+            },
+            {
+                target: '.property-panel',
+                title: 'プロパティ編集',
+                description: '要素を選択すると、右側パネルで色・線種・テキスト・透明度などのプロパティを編集できます。複数選択時は一括変更も可能です。',
+                position: 'left'
+            },
+            {
+                target: '#saveBtn',
+                title: '保存と読込',
+                description: '作成したフロー図はJSON形式で保存できます。「読込」ボタンで以前の作業を復元。こまめに保存しましょう！',
+                position: 'bottom'
+            },
+            {
+                target: '#exportBtn',
+                title: 'PNG / SVG エクスポート',
+                description: '「出力」ボタンからPNGまたはSVG形式でエクスポートできます。範囲指定エクスポートで必要な部分だけ切り出すことも可能です。',
+                position: 'bottom'
+            }
+        ];
+
+        let currentStep = 0;
+        const overlay = document.getElementById('tourOverlay');
+        const spotlight = document.getElementById('tourSpotlight');
+        const tooltip = document.getElementById('tourTooltip');
+        const titleEl = document.getElementById('tourTitle');
+        const descEl = document.getElementById('tourDescription');
+        const currentStepEl = document.getElementById('tourCurrentStep');
+        const totalStepsEl = document.getElementById('tourTotalSteps');
+        const backBtn = document.getElementById('tourBackBtn');
+        const nextBtn = document.getElementById('tourNextBtn');
+        const skipBtn = document.getElementById('tourSkipBtn');
+
+        totalStepsEl.textContent = tourSteps.length;
+
+        function showStep(index) {
+            if (index < 0 || index >= tourSteps.length) return;
+            currentStep = index;
+            const step = tourSteps[index];
+
+            // テキスト更新
+            titleEl.textContent = step.title;
+            descEl.textContent = step.description;
+            currentStepEl.textContent = index + 1;
+            backBtn.disabled = index === 0;
+            nextBtn.textContent = index === tourSteps.length - 1 ? '完了' : '次へ';
+
+            // ターゲット要素の位置取得
+            const targetEl = document.querySelector(step.target);
+            if (targetEl) {
+                const rect = targetEl.getBoundingClientRect();
+                const pad = 6;
+                spotlight.style.top = (rect.top - pad) + 'px';
+                spotlight.style.left = (rect.left - pad) + 'px';
+                spotlight.style.width = (rect.width + pad * 2) + 'px';
+                spotlight.style.height = (rect.height + pad * 2) + 'px';
+                spotlight.style.display = 'block';
+
+                // ツールチップ位置を計算
+                positionTooltip(rect, step.position);
+            } else {
+                spotlight.style.display = 'none';
+            }
+
+            // 表示アニメーション
+            tooltip.classList.remove('visible');
+            overlay.classList.add('active');
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    tooltip.classList.add('visible');
+                });
+            });
+        }
+
+        function positionTooltip(targetRect, preferred) {
+            const margin = 16;
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            // 一旦表示して幅高さ取得
+            tooltip.style.top = '0px';
+            tooltip.style.left = '0px';
+            const tw = tooltip.offsetWidth;
+            const th = tooltip.offsetHeight;
+
+            let top, left;
+
+            if (preferred === 'bottom' && targetRect.bottom + margin + th < vh) {
+                top = targetRect.bottom + margin;
+                left = targetRect.left + targetRect.width / 2 - tw / 2;
+            } else if (preferred === 'right' && targetRect.right + margin + tw < vw) {
+                top = targetRect.top + targetRect.height / 2 - th / 2;
+                left = targetRect.right + margin;
+            } else if (preferred === 'left' && targetRect.left - margin - tw > 0) {
+                top = targetRect.top + targetRect.height / 2 - th / 2;
+                left = targetRect.left - margin - tw;
+            } else if (preferred === 'top' && targetRect.top - margin - th > 0) {
+                top = targetRect.top - margin - th;
+                left = targetRect.left + targetRect.width / 2 - tw / 2;
+            } else {
+                // フォールバック: bottom
+                top = targetRect.bottom + margin;
+                left = targetRect.left + targetRect.width / 2 - tw / 2;
+            }
+
+            // ビューポートにクランプ
+            top = Math.max(margin, Math.min(top, vh - th - margin));
+            left = Math.max(margin, Math.min(left, vw - tw - margin));
+
+            tooltip.style.top = top + 'px';
+            tooltip.style.left = left + 'px';
+        }
+
+        function closeTour(markDone) {
+            overlay.classList.remove('active');
+            tooltip.classList.remove('visible');
+            if (markDone) {
+                try { localStorage.setItem(TOUR_STORAGE_KEY, 'true'); } catch(e) {}
+            }
+        }
+
+        function startTour() {
+            currentStep = 0;
+            showStep(0);
+        }
+
+        // イベント
+        nextBtn.addEventListener('click', () => {
+            if (currentStep < tourSteps.length - 1) {
+                showStep(currentStep + 1);
+            } else {
+                closeTour(true);
+            }
+        });
+        backBtn.addEventListener('click', () => {
+            if (currentStep > 0) showStep(currentStep - 1);
+        });
+        skipBtn.addEventListener('click', () => closeTour(true));
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeTour(true);
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && overlay.classList.contains('active')) closeTour(true);
+        });
+
+        // リサイズ時に位置再計算
+        window.addEventListener('resize', () => {
+            if (overlay.classList.contains('active')) showStep(currentStep);
+        });
+
+        // 初回のみ自動開始
+        let tourCompleted = false;
+        try { tourCompleted = localStorage.getItem(TOUR_STORAGE_KEY) === 'true'; } catch(e) {}
+        if (!tourCompleted) {
+            setTimeout(startTour, 600);
+        }
+
+        // 外部から再トリガー用
+        window.startOnboardingTour = startTour;
+    })();
     </script>
 </body>
 
